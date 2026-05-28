@@ -1,0 +1,207 @@
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { z } from "zod";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { toast } from "sonner";
+import { Sparkles, Loader2 } from "lucide-react";
+
+export const Route = createFileRoute("/auth")({
+  component: AuthPage,
+});
+
+const signInSchema = z.object({
+  email: z.string().trim().email("Email inválido").max(255),
+  password: z.string().min(6, "Mínimo 6 caracteres").max(72),
+});
+const signUpSchema = signInSchema.extend({
+  name: z.string().trim().min(2, "Informe seu nome").max(100),
+});
+
+function AuthPage() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [tab, setTab] = useState<"login" | "signup" | "reset">("login");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (user) navigate({ to: "/app" });
+  }, [user, navigate]);
+
+  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const parsed = signInSchema.safeParse({ email: fd.get("email"), password: fd.get("password") });
+    if (!parsed.success) return toast.error(parsed.error.issues[0].message);
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithPassword(parsed.data);
+    setLoading(false);
+    if (error) return toast.error(error.message === "Invalid login credentials" ? "Email ou senha incorretos" : error.message);
+    toast.success("Bem-vindo de volta!");
+    navigate({ to: "/app" });
+  };
+
+  const handleSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const parsed = signUpSchema.safeParse({
+      email: fd.get("email"),
+      password: fd.get("password"),
+      name: fd.get("name"),
+    });
+    if (!parsed.success) return toast.error(parsed.error.issues[0].message);
+    setLoading(true);
+    const { error } = await supabase.auth.signUp({
+      email: parsed.data.email,
+      password: parsed.data.password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/app`,
+        data: { display_name: parsed.data.name },
+      },
+    });
+    setLoading(false);
+    if (error) {
+      if (error.message.includes("already")) return toast.error("Este email já está cadastrado.");
+      return toast.error(error.message);
+    }
+    toast.success("Conta criada! Você já pode entrar.");
+    setTab("login");
+  };
+
+  const handleReset = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const email = String(fd.get("email") || "");
+    const parsed = z.string().email().safeParse(email);
+    if (!parsed.success) return toast.error("Email inválido");
+    setLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setLoading(false);
+    if (error) return toast.error(error.message);
+    toast.success("Enviamos um email com instruções.");
+    setTab("login");
+  };
+
+  return (
+    <div className="min-h-screen grid lg:grid-cols-2">
+      {/* Brand side */}
+      <div className="hidden lg:flex relative bg-gradient-hero text-white p-12 flex-col justify-between overflow-hidden">
+        <div className="absolute inset-0 opacity-20" style={{
+          backgroundImage: "radial-gradient(circle at 20% 30%, white 1px, transparent 1px), radial-gradient(circle at 80% 70%, white 1px, transparent 1px)",
+          backgroundSize: "60px 60px",
+        }} />
+        <Link to="/" className="relative flex items-center gap-2 font-display font-bold text-xl">
+          <span className="h-10 w-10 rounded-xl bg-white/15 backdrop-blur-sm grid place-items-center">
+            <Sparkles className="h-5 w-5" />
+          </span>
+          Aprova<span className="text-energy">+</span> ENEM
+        </Link>
+        <div className="relative">
+          <h2 className="text-4xl font-display font-bold leading-tight max-w-md">
+            Sua jornada até a aprovação começa com <span className="text-energy">organização</span>.
+          </h2>
+          <p className="mt-4 text-white/85 max-w-md">
+            Cronograma, simulados, redação e um tutor com IA — tudo em um só lugar.
+          </p>
+        </div>
+        <div className="relative text-sm text-white/70">© {new Date().getFullYear()} Aprova+ ENEM</div>
+      </div>
+
+      {/* Form side */}
+      <div className="flex items-center justify-center p-6 sm:p-10 bg-background">
+        <div className="w-full max-w-md">
+          <div className="lg:hidden mb-8 flex items-center justify-center gap-2 font-display font-bold text-xl">
+            <span className="h-10 w-10 rounded-xl bg-gradient-primary grid place-items-center shadow-glow">
+              <Sparkles className="h-5 w-5 text-primary-foreground" />
+            </span>
+            Aprova<span className="text-primary">+</span>
+          </div>
+
+          <Tabs value={tab} onValueChange={(v) => setTab(v as any)} className="w-full">
+            <TabsList className="grid grid-cols-2 w-full">
+              <TabsTrigger value="login">Entrar</TabsTrigger>
+              <TabsTrigger value="signup">Criar conta</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="login" className="mt-6">
+              <h1 className="text-2xl font-display font-bold">Bem-vindo de volta</h1>
+              <p className="text-sm text-muted-foreground mt-1">Continue de onde parou.</p>
+              <form onSubmit={handleLogin} className="mt-6 space-y-4">
+                <div>
+                  <Label htmlFor="email">Email</Label>
+                  <Input id="email" name="email" type="email" required autoComplete="email" />
+                </div>
+                <div>
+                  <Label htmlFor="password">Senha</Label>
+                  <Input id="password" name="password" type="password" required autoComplete="current-password" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTab("reset")}
+                  className="text-sm text-primary hover:underline"
+                >
+                  Esqueci minha senha
+                </button>
+                <Button type="submit" disabled={loading} className="w-full bg-gradient-primary text-primary-foreground hover:opacity-90 shadow-elegant">
+                  {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Entrar
+                </Button>
+              </form>
+            </TabsContent>
+
+            <TabsContent value="signup" className="mt-6">
+              <h1 className="text-2xl font-display font-bold">Crie sua conta</h1>
+              <p className="text-sm text-muted-foreground mt-1">Grátis e leva menos de 1 minuto.</p>
+              <form onSubmit={handleSignUp} className="mt-6 space-y-4">
+                <div>
+                  <Label htmlFor="name">Nome</Label>
+                  <Input id="name" name="name" type="text" required />
+                </div>
+                <div>
+                  <Label htmlFor="email-s">Email</Label>
+                  <Input id="email-s" name="email" type="email" required autoComplete="email" />
+                </div>
+                <div>
+                  <Label htmlFor="password-s">Senha</Label>
+                  <Input id="password-s" name="password" type="password" required minLength={6} autoComplete="new-password" />
+                </div>
+                <Button type="submit" disabled={loading} className="w-full bg-gradient-primary text-primary-foreground hover:opacity-90 shadow-elegant">
+                  {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Criar conta
+                </Button>
+              </form>
+            </TabsContent>
+
+            {tab === "reset" && (
+              <div className="mt-6">
+                <h1 className="text-2xl font-display font-bold">Recuperar senha</h1>
+                <p className="text-sm text-muted-foreground mt-1">Enviaremos um link para o seu email.</p>
+                <form onSubmit={handleReset} className="mt-6 space-y-4">
+                  <div>
+                    <Label htmlFor="email-r">Email</Label>
+                    <Input id="email-r" name="email" type="email" required />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" onClick={() => setTab("login")} className="flex-1">
+                      Voltar
+                    </Button>
+                    <Button type="submit" disabled={loading} className="flex-1 bg-gradient-primary text-primary-foreground hover:opacity-90">
+                      {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                      Enviar
+                    </Button>
+                  </div>
+                </form>
+              </div>
+            )}
+          </Tabs>
+        </div>
+      </div>
+    </div>
+  );
+}
