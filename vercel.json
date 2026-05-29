@@ -1,14 +1,6 @@
 {
   "buildCommand": "npm run build",
-  "outputDirectory": "dist",
   "installCommand": "npm install",
-  "framework": null,
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
-  ],
   "headers": [
     {
       "source": "/assets/(.*)",
@@ -36,5 +28,7 @@
         }
       ]
     }
+  ]
+}
   ]
 }
